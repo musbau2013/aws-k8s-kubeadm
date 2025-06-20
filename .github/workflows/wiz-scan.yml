@@ -22,12 +22,12 @@ run-name: Deploying from ${{ inputs.folder }}
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Select the environment (e.g., dev, qa, prod)"
-        required: true
-        type: environment
-        options:
-          - dev
+      # environment:
+      #   description: "Select the environment (e.g., dev, qa, prod)"
+      #   required: true
+      #   type: environment
+      #   options:
+      #     - dev
 
       folder:
         description: "Select the folder to deploy"
