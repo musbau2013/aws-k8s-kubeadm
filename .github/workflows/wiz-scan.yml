@@ -34,7 +34,7 @@ on:
         required: true
         type: choice
         options:
-          - "./Infra"
+          - "./test"
 
       workspace:
         description: "Select the workspace ID"
