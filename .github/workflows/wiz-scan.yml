@@ -1,0 +1,51 @@
+jobs:
+  security:
+    uses: sherwin-williams-co/security-workflows/.github/workflows/terraform.yaml@v0
+    secrets:
+      DYNATRACE_TOKEN: ${{ secrets.DYNATRACE_TOKEN }}
+
+  Infra-planning-approval:
+    runs-on: sw-gh-ubuntu-latest
+    needs: [security]
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Add Sherwin CA certificates
+        uses: sherwin-williams-co/sherwin-ca-injector-action@v0
+
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Install TFLint
+        run: |
+          curl -LO https://github.com/terraform-linters/tflint/releases/download/v0.41.0/tflint_linux_amd64.zip 
+          unzip tflint_linux_amd64.zip
+          sudo mv tflint /usr/local/bin/
+
+      - name: Lint Terraform code
+        run: tflint
+        working-directory: ${{ inputs.folder }}
+
+      - name: Trigger Terraform Cloud Run
+        if: ${{ success() && github.event_name == 'workflow_dispatch' }}
+        run: |
+          WORKSPACE_ID="${{ inputs.workspace }}"
+          MESSAGE="Triggered by GitHub Actions after Wiz scan passed"
+
+          curl \
+            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+            --header "Content-Type: application/json" \
+            --request POST \
+            --data '{
+              "data": {
+                "type": "runs",
+                "attributes": {
+                  "is-destroy": false,
+                  "message": "'"${MESSAGE}"'"
+                }
+              }
+            }' \
+            "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/runs"
