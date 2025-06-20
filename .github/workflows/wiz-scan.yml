@@ -1,20 +1,52 @@
-name: Terraform_Security_Scan
+# name: Terraform_Security_Scan
+
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       environment:
+#         description: 'Target environment'
+#         required: true
+#         type: string
+#       folder:
+#         description: 'Terraform folder to scan'
+#         required: true
+#         type: string
+#       workspace:
+#         description: 'Terraform Cloud workspace ID'
+#         required: true
+#         type: string
+
+name: Terraform-Workflow
+run-name: Deploying from ${{ inputs.folder }}
 
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Target environment'
+        description: "Select the environment (e.g., dev, qa, prod)"
         required: true
-        type: string
+        type: environment
+        options:
+          - dev
+
       folder:
-        description: 'Terraform folder to scan'
+        description: "Select the folder to deploy"
         required: true
-        type: string
+        type: choice
+        options:
+          - "./Infra"
+
       workspace:
-        description: 'Terraform Cloud workspace ID'
+        description: "Select the workspace ID"
         required: true
-        type: string
+        type: choice
+        options:
+          - shwaws-cloudops-terraform-policy-staging
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   security:
     uses: sherwin-williams-co/security-workflows/.github/workflows/terraform.yaml@v0
