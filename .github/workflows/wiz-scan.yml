@@ -107,7 +107,7 @@ on:
         required: true
         type: choice
         options:
-          - shwaws-cloudops-terraform-policy-staging
+          - ws-SwEx83WPMU9QRoJ8
 
 concurrency:
   group: ${{ github.workflow }}
@@ -155,7 +155,7 @@ jobs:
           cd ${{ inputs.folder }} || cd .  # adjust path if needed
           tflint --init || true  # Ignore failure if no .tflint.hcl
           tflint
-          
+
       # Step 2: Check if TFLint passed
       - name: Check TFLint Result
         id: check-tflint
