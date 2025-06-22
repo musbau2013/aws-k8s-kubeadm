@@ -8,11 +8,11 @@ variable "org_id" {
   type        = string
 }
 
-variable "region" {
-  description = "Default region for resources"
-  type        = string
-  default     = "us-central1"
-}
+# variable "region" {
+#   description = "Default region for resources"
+#   type        = string
+#   default     = "us-central1"
+# }
 
 variable "shared_vpc_project_id" {
   description = "Project ID for Shared VPC host"
