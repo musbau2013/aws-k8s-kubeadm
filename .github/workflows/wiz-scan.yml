@@ -140,7 +140,20 @@ jobs:
       # Step 1: Install TFLint
       - name: Install TFLint
         run: |
-          curl -sL https://raw.githubusercontent.com/terraform-linters/tflint/master/install.sh  | bash
+          TFLINT_VERSION=$(curl -s https://api.github.com/repos/terraform-linters/tflint/releases/latest  | grep tag_name | cut -d '"' -f4)
+          ARCH=amd64
+          OS=linux
+          curl -sL https://github.com/terraform-linters/tflint/releases/download/${TFLINT_VERSION}/tflint_${OS}_${ARCH}.zip  > tflint.zip
+          unzip tflint.zip
+          chmod +x tflint
+          sudo mv tflint /usr/local/bin/
+
+      # Step 2: Run TFLint
+      - name: Run TFLint
+        id: tflint
+        run: |
+          cd ${{ inputs.folder }} || cd .  # adjust path if needed
+          tflint --deep --ignore-backend
 
       # Step 2: Check if TFLint passed
       - name: Check TFLint Result
