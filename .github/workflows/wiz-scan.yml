@@ -133,7 +133,7 @@ jobs:
       # Step 1: Run TFLint
       - name: Run TFLint
         id: tflint
-        uses: runwaylabs/tflint-github-action@v0.5.0
+        uses: imranismail/setup-tflint@v1
         with:
           version: latest
           args: --deep --ignore-backend
