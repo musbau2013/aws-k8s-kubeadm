@@ -107,7 +107,7 @@ on:
         required: true
         type: choice
         options:
-          - ws-SwEx83WPMU9QRoJ8
+          - "ws-SwEx83WPMU9QRoJ8"
 
 concurrency:
   group: ${{ github.workflow }}
