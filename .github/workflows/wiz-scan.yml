@@ -149,12 +149,32 @@ jobs:
             echo "✅ TFLint scan passed."
           fi
 
-      # Step 3: Trigger Terraform Cloud Run
       - name: Trigger Terraform Cloud Run
         if: steps.check-tflint.conclusion == 'success'
-        uses: hashicorp/terraform-cloud-trigger-run@v1
-        with:
-          organization: my-tfc-org
-          workspace: my-tfc-workspace
-          api_token: ${{ secrets.TF_API_TOKEN }}
-          message: "Triggered by GitHub Actions after successful TFLint scan"
+        run: |
+          WORKSPACE_ID="${{ inputs.workspace }}"
+          MESSAGE="Triggered by GitHub Actions after Wiz scan passed"
+
+          curl \
+            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+            --header "Content-Type: application/json" \
+            --request POST \
+            --data '{
+              "data": {
+                "type": "runs",
+                "attributes": {
+                  "is-destroy": false,
+                  "message": "'"${MESSAGE}"'"
+                }
+              }
+            }' \
+            "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/runs"
+
+      # Step 3: Trigger Terraform Cloud Run via API
+      # - name: Trigger Terraform Cloud Run
+      #   if: steps.check-tflint.conclusion == 'success'
+      #   run: |
+      #     curl -s --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+      #          --header "Content-Type: application/vnd.api+json" \
+      #          --data '{"data":{"type":"runs","attributes":{"is-auto-applied":false},"relationships":{"workspace":{"data":{"type":"workspaces","id":"${{ secrets.WORKSPACE_ID }}"}}}}' \
+      #          https://app.terraform.io/api/v2/runs 
