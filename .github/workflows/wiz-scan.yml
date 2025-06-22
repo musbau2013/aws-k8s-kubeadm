@@ -1,20 +1,86 @@
-# name: Terraform_Security_Scan
+# name: Terraform-Workflow
+# run-name: Deploying from ${{ inputs.folder }}
 
 # on:
 #   workflow_dispatch:
 #     inputs:
 #       environment:
-#         description: 'Target environment'
+#         description: "Select the environment (e.g., dev, qa, prod)"
 #         required: true
-#         type: string
+#         type: environment
+#         options:
+#           - dev
+
 #       folder:
-#         description: 'Terraform folder to scan'
+#         description: "Select the folder to deploy"
 #         required: true
-#         type: string
+#         type: choice
+#         options:
+#           - "./test"
+
 #       workspace:
-#         description: 'Terraform Cloud workspace ID'
+#         description: "Select the workspace ID"
 #         required: true
-#         type: string
+#         type: choice
+#         options:
+#           - shwaws-cloudops-terraform-policy-staging
+
+# concurrency:
+#   group: ${{ github.workflow }}
+#   cancel-in-progress: true
+
+# jobs:
+#   security:
+#     uses: sherwin-williams-co/security-workflows/.github/workflows/terraform.yaml@v0
+#     secrets:
+#       DYNATRACE_TOKEN: ${{ secrets.DYNATRACE_TOKEN }}
+
+#   Infra-planning-approval:
+#     runs-on: sw-gh-ubuntu-latest
+#     needs: [security]
+#     environment: ${{ inputs.environment }}
+
+#     steps:
+#       - name: Add Sherwin CA certificates
+#         uses: sherwin-williams-co/sherwin-ca-injector-action@v0
+
+#       - name: Checkout
+#         uses: actions/checkout@v3
+
+#       - name: Install Terraform
+#         uses: hashicorp/setup-terraform@v2
+
+#       - name: Install TFLint
+#         run: |
+#           curl -LO https://github.com/terraform-linters/tflint/releases/download/v0.41.0/tflint_linux_amd64.zip 
+#           unzip tflint_linux_amd64.zip
+#           sudo mv tflint /usr/local/bin/
+
+#       - name: Lint Terraform code
+#         run: tflint
+#         working-directory: ${{ inputs.folder }}
+
+#       - name: Trigger Terraform Cloud Run
+#         if: ${{ success() && github.event_name == 'workflow_dispatch' }}
+#         run: |
+#           WORKSPACE_ID="${{ inputs.workspace }}"
+#           MESSAGE="Triggered by GitHub Actions after Wiz scan passed"
+
+#           curl \
+#             --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+#             --header "Content-Type: application/json" \
+#             --request POST \
+#             --data '{
+#               "data": {
+#                 "type": "runs",
+#                 "attributes": {
+#                   "is-destroy": false,
+#                   "message": "'"${MESSAGE}"'"
+#                 }
+#               }
+#             }' \
+#             "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/runs"
+
 
 name: Terraform-Workflow
 run-name: Deploying from ${{ inputs.folder }}
@@ -48,53 +114,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  security:
-    uses: sherwin-williams-co/security-workflows/.github/workflows/terraform.yaml@v0
-    secrets:
-      DYNATRACE_TOKEN: ${{ secrets.DYNATRACE_TOKEN }}
-
-  Infra-planning-approval:
-    runs-on: sw-gh-ubuntu-latest
-    needs: [security]
-    environment: ${{ inputs.environment }}
+  tflint-scan-and-tfc-deploy:
+    name: TFLint Scan & Terraform Cloud Trigger
+    runs-on: ubuntu-latest
+    environment: production
 
     steps:
-      - name: Add Sherwin CA certificates
-        uses: sherwin-williams-co/sherwin-ca-injector-action@v0
+      # Checkout repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Install Terraform
+      # Setup Terraform CLI
+      - name: Setup Terraform CLI
         uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
 
-      - name: Install TFLint
+      # Step 1: Run TFLint
+      - name: Run TFLint
+        id: tflint
+        uses: runwaylabs/tflint-github-action@v0.5.0
+        with:
+          version: latest
+          args: --deep --ignore-backend
+
+      # Step 2: Check if TFLint passed
+      - name: Check TFLint Result
+        id: check-tflint
         run: |
-          curl -LO https://github.com/terraform-linters/tflint/releases/download/v0.41.0/tflint_linux_amd64.zip 
-          unzip tflint_linux_amd64.zip
-          sudo mv tflint /usr/local/bin/
+          if [ $? -ne 0 ]; then
+            echo "❌ TFLint scan failed. Exiting."
+            exit 1
+          else
+            echo "✅ TFLint scan passed."
+          fi
 
-      - name: Lint Terraform code
-        run: tflint
-        working-directory: ${{ inputs.folder }}
-
+      # Step 3: Trigger Terraform Cloud Run
       - name: Trigger Terraform Cloud Run
-        if: ${{ success() && github.event_name == 'workflow_dispatch' }}
-        run: |
-          WORKSPACE_ID="${{ inputs.workspace }}"
-          MESSAGE="Triggered by GitHub Actions after Wiz scan passed"
-
-          curl \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            --header "Content-Type: application/json" \
-            --request POST \
-            --data '{
-              "data": {
-                "type": "runs",
-                "attributes": {
-                  "is-destroy": false,
-                  "message": "'"${MESSAGE}"'"
-                }
-              }
-            }' \
-            "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/runs"
+        if: steps.check-tflint.conclusion == 'success'
+        uses: hashicorp/terraform-cloud-trigger-run@v1
+        with:
+          organization: my-tfc-org
+          workspace: my-tfc-workspace
+          api_token: ${{ secrets.TF_API_TOKEN }}
+          message: "Triggered by GitHub Actions after successful TFLint scan"
