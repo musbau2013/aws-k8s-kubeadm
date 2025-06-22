@@ -13,21 +13,21 @@ module "shared_vpc_project" {
 }
 
 module "service_project_1" {
-  source = "./modules/service_project"
+  source = "./modules/service_projects"
 
   project_id      = var.service_project_1_id
   billing_account = var.billing_account
   org_id          = var.org_id
   shared_vpc_project_id = module.shared_vpc_project.project_id
-  region          = var.region
+  # region          = var.region
 }
 
 module "service_project_2" {
-  source = "./modules/service_project"
+  source = "./modules/service_projects"
 
   project_id      = var.service_project_2_id
   billing_account = var.billing_account
   org_id          = var.org_id
   shared_vpc_project_id = module.shared_vpc_project.project_id
-  region          = var.region
+  # region          = var.region
 }
