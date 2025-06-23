@@ -78,7 +78,7 @@ jobs:
     if: success()
 
     env:
-      TF_API_TOKEN: ${{ secrets.TFC_API_TOKEN }}
+      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
 
     steps:
       - name: Checkout Repository
