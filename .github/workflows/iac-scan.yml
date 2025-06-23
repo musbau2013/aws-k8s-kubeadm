@@ -33,7 +33,7 @@ jobs:
   #     DYNATRACE_TOKEN: ${{ secrets.DYNATRACE_TOKEN }}
 
   infra-tflint-scan-and-tfc-deploy:
-    runs-on: sw-gh-ubuntu-latest
+    runs-on: ubuntu-latest
     # needs: [security]
     outputs:
       tflint_passed: "true"
