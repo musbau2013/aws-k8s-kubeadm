@@ -1,6 +1,3 @@
-
-
-
 name: Terraform-Workflow
 run-name: Deploying from ${{ inputs.folder }}
 
@@ -81,7 +78,7 @@ jobs:
       - name: Trigger Terraform Cloud Run
         if: steps.check-tflint.conclusion == 'success'
         run: |
-          WORKSPACE_ID="${{secrets.WORKSPACE_ID}}"
+          # WORKSPACE_ID="${{secrets.WORKSPACE_ID}}"
           MESSAGE="Triggered by GitHub Actions after Wiz scan passed"
 
           curl \
