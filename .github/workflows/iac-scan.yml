@@ -17,7 +17,7 @@ on:
         required: true
         type: choice
         options:
-          - sns-dev
+          - apthub-devops
           - sns-prod
           - vpc-staging
           # Add more workspace names here as needed
