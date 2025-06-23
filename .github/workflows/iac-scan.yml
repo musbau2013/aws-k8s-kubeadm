@@ -39,8 +39,8 @@ jobs:
       tflint_passed: "true"
 
     steps:
-      - name: Add Sherwin CA certificates
-        uses: sherwin-williams-co/sherwin-ca-injector-action@v0
+      # - name: Add Sherwin CA certificates
+      #   uses: sherwin-williams-co/sherwin-ca-injector-action@v0
 
       - name: Checkout Repository
         uses: actions/checkout@v4
