@@ -117,7 +117,7 @@ on:
         required: true
         type: choice
         options:
-          - "./test"
+          - "./ec2-folder"
 
 concurrency:
   group: ${{ github.workflow }}-{{ github.ref }}
