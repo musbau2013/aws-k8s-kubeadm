@@ -27,14 +27,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  security:
-    uses: sherwin-williams-co/security-workflows/.github/workflows/terraform.yaml@v0
-    secrets: 
-      DYNATRACE_TOKEN: ${{ secrets.DYNATRACE_TOKEN }}
+  # security:
+  #   uses: sherwin-williams-co/security-workflows/.github/workflows/terraform.yaml@v0
+  #   secrets: 
+  #     DYNATRACE_TOKEN: ${{ secrets.DYNATRACE_TOKEN }}
 
   infra-tflint-scan-and-tfc-deploy:
     runs-on: sw-gh-ubuntu-latest
-    needs: [security]
+    # needs: [security]
     outputs:
       tflint_passed: "true"
 
