@@ -81,7 +81,6 @@ jobs:
           TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
           WORKSPACE_ID: ${{ secrets.WORKSPACE_ID }}
         run: |
-          # WORKSPACE_ID="${{WORKSPACE_ID}}"
           MESSAGE="Triggered by GitHub Actions after Wiz scan passed"
 
           curl \
