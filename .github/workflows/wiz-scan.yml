@@ -1,4 +1,5 @@
-# name: Terraform-Workflow
+# name: TFLint Scan & Conditional TFC Trigger
+
 # run-name: Deploying from ${{ inputs.folder }}
 
 # on:
@@ -16,145 +17,78 @@
 #         required: true
 #         type: choice
 #         options:
-#           - "./test"
-
-#       workspace:
-#         description: "Select the workspace ID"
-#         required: true
-#         type: choice
-#         options:
-#           - shwaws-cloudops-terraform-policy-staging
+#           - "./ec2-folder"
 
 # concurrency:
-#   group: ${{ github.workflow }}
+#   group: ${{ github.workflow }}-{{ github.ref }}
 #   cancel-in-progress: true
 
 # jobs:
-#   security:
-#     uses: sherwin-williams-co/security-workflows/.github/workflows/terraform.yaml@v0
-#     secrets:
-#       DYNATRACE_TOKEN: ${{ secrets.DYNATRACE_TOKEN }}
+#   tflint-scan-and-tfc-deploy:
+#     name: TFLint Scan
+#     runs-on: ubuntu-latest
 
-#   Infra-planning-approval:
-#     runs-on: sw-gh-ubuntu-latest
-#     needs: [security]
-#     environment: ${{ inputs.environment }}
+#     outputs:
+#       tflint_passed: "true"
 
 #     steps:
-#       - name: Add Sherwin CA certificates
-#         uses: sherwin-williams-co/sherwin-ca-injector-action@v0
-
-#       - name: Checkout
-#         uses: actions/checkout@v3
-
-#       - name: Install Terraform
-#         uses: hashicorp/setup-terraform@v2
+#       - name: Checkout Repository
+#         uses: actions/checkout@v4
 
 #       - name: Install TFLint
 #         run: |
-#           curl -LO https://github.com/terraform-linters/tflint/releases/download/v0.41.0/tflint_linux_amd64.zip 
-#           unzip tflint_linux_amd64.zip
+#           TFLINT_VERSION=$(curl -s https://api.github.com/repos/terraform-linters/tflint/releases/latest  | grep tag_name | cut -d '"' -f4)
+#           ARCH=amd64
+#           OS=linux
+#           curl -sL https://github.com/terraform-linters/tflint/releases/download/${TFLINT_VERSION}/tflint_${OS}_${ARCH}.zip  > tflint.zip
+#           unzip tflint.zip
+#           chmod +x tflint
 #           sudo mv tflint /usr/local/bin/
 
-#       - name: Lint Terraform code
-#         run: tflint
-#         working-directory: ${{ inputs.folder }}
-
-#       - name: Trigger Terraform Cloud Run
-#         if: ${{ success() && github.event_name == 'workflow_dispatch' }}
+#       - name: Run TFLint
+#         id: tflint
 #         run: |
-#           WORKSPACE_ID="${{ inputs.workspace }}"
-#           MESSAGE="Triggered by GitHub Actions after Wiz scan passed"
+#           cd ${{ inputs.folder }} || cd .
+#           tflint --init || true
+#           tflint
 
-#           curl \
-#             --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-#             --header "Content-Type: application/json" \
-#             --request POST \
-#             --data '{
-#               "data": {
-#                 "type": "runs",
-#                 "attributes": {
-#                   "is-destroy": false,
-#                   "message": "'"${MESSAGE}"'"
-#                 }
-#               }
-#             }' \
-#             "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/runs"
+#       - name: Set output based on TFLint result
+#         id: set-output
+#         run: |
+#           echo "tflint_passed=true" >> $GITHUB_OUTPUT
 
+#   trigger-tfc-run:
+#     name: Trigger Terraform Cloud Run
+#     needs: tflint-scan-and-tfc-deploy
+#     runs-on: ubuntu-latest
+#     if: success()
 
-name: Terraform-Workflow
-run-name: Deploying from ${{ inputs.folder }}
+#     env:
+#       TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+#       WORKSPACE_ID: ${{ secrets.WORKSPACE_ID }}
 
-on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Select the environment (e.g., dev, qa, prod)"
-        required: true
-        type: environment
-        options:
-          - dev
+#     steps:
+#       - name: Trigger Terraform Cloud Run
+#         run: |
+#           MESSAGE="Triggered by GitHub Actions after successful TFLint scan"
 
-      folder:
-        description: "Select the folder to deploy"
-        required: true
-        type: choice
-        options:
-          - "./test"
-
-      workspace:
-        description: "Select the workspace ID"
-        required: true
-        type: choice
-        options:
-          - shwaws-cloudops-terraform-policy-staging
-
-concurrency:
-  group: ${{ github.workflow }}
-  cancel-in-progress: true
-
-jobs:
-  tflint-scan-and-tfc-deploy:
-    name: TFLint Scan & Terraform Cloud Trigger
-    runs-on: ubuntu-latest
-    environment: production
-
-    steps:
-      # Checkout repository
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      # Setup Terraform CLI
-      - name: Setup Terraform CLI
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.6.0
-
-      # Step 1: Run TFLint
-      - name: Run TFLint
-        id: tflint
-        uses: runwaylabs/tflint-github-action@v0.5.0
-        with:
-          version: latest
-          args: --deep --ignore-backend
-
-      # Step 2: Check if TFLint passed
-      - name: Check TFLint Result
-        id: check-tflint
-        run: |
-          if [ $? -ne 0 ]; then
-            echo "❌ TFLint scan failed. Exiting."
-            exit 1
-          else
-            echo "✅ TFLint scan passed."
-          fi
-
-      # Step 3: Trigger Terraform Cloud Run
-      - name: Trigger Terraform Cloud Run
-        if: steps.check-tflint.conclusion == 'success'
-        uses: hashicorp/terraform-cloud-trigger-run@v1
-        with:
-          organization: my-tfc-org
-          workspace: my-tfc-workspace
-          api_token: ${{ secrets.TF_API_TOKEN }}
-          message: "Triggered by GitHub Actions after successful TFLint scan"
+#           curl -s --header "Authorization: Bearer ${TF_API_TOKEN}" \
+#                --header "Content-Type: application/vnd.api+json" \
+#                --data '{
+#                  "data": {
+#                    "type": "runs",
+#                    "attributes": {
+#                      "is-destroy": false,
+#                      "message": "'"${MESSAGE}"'"
+#                    },
+#                    "relationships": {
+#                      "workspace": {
+#                        "data": {
+#                          "type": "workspaces",
+#                          "id": "'"${WORKSPACE_ID}"'"
+#                        }
+#                      }
+#                    }
+#                  }
+#                }' \
+#                https://app.terraform.io/api/v2/runs 
