@@ -1,4 +1,4 @@
-name: Terraform-Workflow
+name: TFLint Scan & Conditional TFC Trigger
 run-name: Scanning from ${{ inputs.folder }}
 
 on:
