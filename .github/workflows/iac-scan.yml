@@ -18,6 +18,7 @@ on:
         type: choice
         options:
           - apthub-devops
+          - amazon-lex-v2
           - sns-prod
           - vpc-staging
           # Add more workspace names here as needed
