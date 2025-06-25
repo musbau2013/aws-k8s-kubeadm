@@ -6,10 +6,10 @@ variable "region" {
   default     = "us-east-1"
 }
 
-variable "aws_assume_role_arn" {
-  description = "ARN of the IAM role to assume"
-  type        = string
-}
+# variable "aws_assume_role_arn" {
+#   description = "ARN of the IAM role to assume"
+#   type        = string
+# }
 
 variable "ami_id" {
   description = "AMI ID for the EC2 instance"
@@ -20,7 +20,7 @@ variable "ami_id" {
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-  default     = "t2.micro"
+  # default     = "t2.micro"
 }
 
 variable "key_name" {
