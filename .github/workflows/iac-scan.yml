@@ -108,7 +108,7 @@ jobs:
         run: |
           MESSAGE="Triggered by GitHub Actions after successful TFLint scan"
 
-          curl -s \
+          curl -sk \
             --header "Authorization: Bearer ${TF_API_TOKEN}" \
             --header "Content-Type: application/vnd.api+json" \
             --data '{
