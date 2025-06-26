@@ -9,3 +9,8 @@ output "ec2_id" {
   description = "ID of the EC2 instance"
   value       = aws_instance.my_ec2.id
 }
+
+
+output "debug_role_arn" {
+  value = var.aws_role_arn
+}
