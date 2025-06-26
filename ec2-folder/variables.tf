@@ -23,7 +23,7 @@ variable "instance_type" {
   # default     = "t2.micro"
 }
 
-variable "role_arn" {
+variable "aws_role_arn" {
   description = "tfc role arn"
   type        = string
 }
