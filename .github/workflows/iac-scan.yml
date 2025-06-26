@@ -19,7 +19,7 @@ on:
         options:
           - apthub-devops
           - amazon-lex-v2
-          - sns-prod
+          - aws-k8s-kubeadm
           - vpc-staging
           # Add more workspace names here as needed
 
