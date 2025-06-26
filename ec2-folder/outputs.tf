@@ -11,6 +11,6 @@ output "ec2_id" {
 }
 
 
-output "debug_role_arn" {
-  value = var.aws_role_arn
-}
+# output "debug_role_arn" {
+#   value = var.aws_role_arn
+# }
