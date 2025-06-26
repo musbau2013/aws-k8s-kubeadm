@@ -9,9 +9,8 @@ on:
         required: true
         type: choice
         options:
-          - "./Infra/policies/sns"
-          # Add more folders as needed
-
+          - "./ec2-folder
+          
       workspace:
         description: "Select the Terraform Cloud workspace"
         required: true
