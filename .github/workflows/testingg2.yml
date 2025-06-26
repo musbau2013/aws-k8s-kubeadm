@@ -9,7 +9,7 @@ on:
         required: true
         type: choice
         options:
-          - "./Infra"
+          - "./ec2-folder"
           # Add more folders as needed
 
       workspace:
