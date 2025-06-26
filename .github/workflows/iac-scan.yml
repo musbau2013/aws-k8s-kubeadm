@@ -9,8 +9,8 @@ on:
         required: true
         type: choice
         options:
-          - "./ec2-folder
-          
+          - "./ec2-folder"
+
       workspace:
         description: "Select the Terraform Cloud workspace"
         required: true
