@@ -9,7 +9,7 @@ on:
         required: true
         type: choice
         options:
-          - ./ec2-folder
+          - "./ec2-folder"
 
       workspace:
         description: "Select the Terraform Cloud workspace"
@@ -20,7 +20,6 @@ on:
           - amazon-lex-v2
           - aws-k8s-kubeadm
           - vpc-staging
-          # Add more workspace names here as needed
 
 concurrency:
   group: ${{ github.workflow }}
