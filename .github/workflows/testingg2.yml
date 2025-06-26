@@ -1,0 +1,133 @@
+name: TFLint Scan & Conditional TFC Trigger
+run-name: Scanning from ${{ inputs.folder }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      folder:
+        description: "Select the folder to deploy"
+        required: true
+        type: choice
+        options:
+          - "./Infra"
+          # Add more folders as needed
+
+      workspace:
+        description: "Select the Terraform Cloud workspace"
+        required: true
+        type: choice
+        options:
+          - apthub-devops
+          - amazon-lex-v2
+          - aws-k8s-kubeadm
+          - vpc-staging
+          # Add more workspace names here as needed
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  # security:
+  #   uses: sherwin-williams-co/security-workflows/.github/workflows/terraform.yaml@v0
+  #   secrets: 
+  #     DYNATRACE_TOKEN: ${{ secrets.DYNATRACE_TOKEN }}
+  
+  infra-tflint-scan-and-tfc-deploy:
+    runs-on: ubuntu-latest
+    # needs: [security]
+    outputs:
+      tflint_passed: "true"
+
+    steps:
+      # - name: Add Sherwin CA certificates
+      #   uses: sherwin-williams-co/sherwin-ca-injector-action@v0
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Install TFLint
+        run: |
+          TFLINT_VERSION=$(curl -s https://api.github.com/repos/terraform-linters/tflint/releases/latest  | jq -r .tag_name)
+          ARCH=amd64
+          OS=linux
+          curl -sL https://github.com/terraform-linters/tflint/releases/download/${TFLINT_VERSION}/tflint_${OS}_${ARCH}.zip  > tflint.zip
+          unzip tflint.zip
+          chmod +x tflint
+          sudo mv tflint /usr/local/bin/
+
+      - name: Run TFLint
+        id: tflint
+        run: |
+          cd ${{ inputs.folder }} || cd .
+          tflint --init || true
+          tflint
+
+      - name: Set output based on TFLint result
+        id: set-output
+        run: |
+          echo "tflint_passed=true" >> $GITHUB_OUTPUT
+
+  trigger-tfc-run:
+    name: Trigger Terraform Cloud Run
+    needs: infra-tflint-scan-and-tfc-deploy
+    runs-on: sw-gh-ubuntu-latest
+    if: success()
+
+    env:
+      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+
+    steps:
+      - name: Add Sherwin CA certificates
+        uses: sherwin-williams-co/sherwin-ca-injector-action@v0
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Read Workspace ID from JSON Mapping
+        id: get_workspace_id
+        run: |
+          WORKSPACE_NAME="${{ inputs.workspace }}"
+          JSON_PATH=".github/tfc-workspaces.json"
+            if [[ ! -f "$JSON_PATH" ]]; then
+            echo "Error: Workspace mapping file not found at $JSON_PATH"
+            exit 1
+          fi
+
+          WORKSPACE_ID=$(jq -r --arg name "$WORKSPACE_NAME" '.[$name]' "$JSON_PATH")
+
+          if [[ "$WORKSPACE_ID" == "null" ]]; then
+            echo "Error: workspace '$WORKSPACE_NAME' not found in mapping"
+            exit 1
+          fi
+
+          echo "WORKSPACE_ID=$WORKSPACE_ID" >> $GITHUB_ENV
+
+      - name: Trigger Terraform Cloud Run
+        run: |
+          MESSAGE="Triggered by GitHub Actions after successful TFLint scan"
+
+          curl -sk \
+            --header "Authorization: Bearer ${TF_API_TOKEN}" \
+            --header "Content-Type: application/vnd.api+json" \
+            --data '{
+              "data": {
+                "type": "runs",
+                "attributes": {
+                  "is-destroy": false,
+                  "message": "'"${MESSAGE}"'"
+                },
+                "relationships": {
+                  "workspace": {
+                    "data": {
+                      "type": "workspaces",
+                      "id": "'"${WORKSPACE_ID}"'"
+                    }
+                  }
+                }
+              }
+            }' \
+            "https://app.terraform.io/api/v2/runs"
