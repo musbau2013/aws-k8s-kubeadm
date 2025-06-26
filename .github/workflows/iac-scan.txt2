@@ -1,0 +1,127 @@
+name: TFLint Scan & Conditional TFC Trigger
+run-name: Scanning from ${{ inputs.folder }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      folder:
+        description: "Select the folder to deploy"
+        required: true
+        type: choice
+        options:
+          - "./ec2-folder"
+
+      workspace:
+        description: "Select the Terraform Cloud workspace"
+        required: true
+        type: choice
+        options:
+          - apthub-devops
+          - amazon-lex-v2
+          - aws-k8s-kubeadm
+          - vpc-staging
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  infra-tflint-scan-and-tfc-deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      tflint_passed: ${{ steps.set-output.outputs.tflint_passed }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Install TFLint
+        run: |
+          TFLINT_VERSION=$(curl -s https://api.github.com/repos/terraform-linters/tflint/releases/latest | jq -r .tag_name)
+          ARCH=amd64
+          OS=linux
+          curl -sL "https://github.com/terraform-linters/tflint/releases/download/${TFLINT_VERSION}/tflint_${OS}_${ARCH}.zip" > tflint.zip
+          unzip tflint.zip
+          chmod +x tflint
+          sudo mv tflint /usr/local/bin/
+          tflint --version
+
+      - name: Run TFLint
+        id: tflint
+        run: |
+          cd ${{ inputs.folder }} || exit 1
+          tflint --init
+          tflint || echo "::warning::TFLint found issues"
+          echo "tflint_exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Set output based on TFLint result
+        id: set-output
+        run: |
+          if [ "${{ steps.tflint.outputs.tflint_exit_code }}" -eq 0 ]; then
+            echo "tflint_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "tflint_passed=false" >> $GITHUB_OUTPUT
+          fi
+
+  trigger-tfc-run:
+    name: Trigger Terraform Cloud Run
+    needs: infra-tflint-scan-and-tfc-deploy
+    runs-on: ubuntu-latest
+    if: needs.infra-tflint-scan-and-tfc-deploy.outputs.tflint_passed == 'true'
+
+    env:
+      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Read Workspace ID from JSON Mapping
+        id: get_workspace_id
+        run: |
+          WORKSPACE_NAME="${{ inputs.workspace }}"
+          JSON_PATH=".github/tfc-workspaces.json"
+
+          if [[ ! -f "$JSON_PATH" ]]; then
+            echo "::error::Workspace mapping file not found at $JSON_PATH"
+            exit 1
+          fi
+
+          WORKSPACE_ID=$(jq -r --arg name "$WORKSPACE_NAME" '.[$name]' "$JSON_PATH")
+
+          if [[ "$WORKSPACE_ID" == "null" || -z "$WORKSPACE_ID" ]]; then
+            echo "::error::Workspace '$WORKSPACE_NAME' not found in mapping"
+            exit 1
+          fi
+
+          echo "WORKSPACE_ID=$WORKSPACE_ID" >> $GITHUB_ENV
+          echo "workspace_id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
+
+      - name: Trigger Terraform Cloud Run
+        run: |
+          curl -sSf \
+            --header "Authorization: Bearer ${TF_API_TOKEN}" \
+            --header "Content-Type: application/vnd.api+json" \
+            --data '{
+              "data": {
+                "type": "runs",
+                "attributes": {
+                  "is-destroy": false,
+                  "message": "Triggered by GitHub Actions: ${{ github.workflow }} #${{ github.run_id }}"
+                },
+                "relationships": {
+                  "workspace": {
+                    "data": {
+                      "type": "workspaces",
+                      "id": "'"${WORKSPACE_ID}"'"
+                    }
+                  }
+                }
+              }
+            }' \
+            "https://app.terraform.io/api/v2/runs" \
+            && echo "::notice::Successfully triggered TFC run in workspace ${WORKSPACE_ID}" \
+            || (echo "::error::Failed to trigger TFC run" && exit 1)
