@@ -1,10 +1,10 @@
 # variables.tf
 
-variable "region" {
-  description = "AWS region to deploy resources"
-  type        = string
-  default     = "us-east-1"
-}
+# variable "region" {
+#   description = "AWS region to deploy resources"
+#   type        = string
+#   default     = "us-east-1"
+# }
 
 # variable "aws_assume_role_arn" {
 #   description = "ARN of the IAM role to assume"
@@ -23,9 +23,9 @@ variable "instance_type" {
   # default     = "t2.micro"
 }
 
-variable "aws_role_arn" {
-  description = "tfc role arn"
-  type        = string
-}
+# variable "aws_role_arn" {
+#   description = "tfc role arn"
+#   type        = string
+# }
 
 
