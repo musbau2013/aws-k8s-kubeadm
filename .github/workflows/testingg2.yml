@@ -21,6 +21,7 @@ on:
           - amazon-lex-v2
           - aws-k8s-kubeadm
           - vpc-staging
+          - aws-api-test1
           # Add more workspace names here as needed
 
 concurrency:
