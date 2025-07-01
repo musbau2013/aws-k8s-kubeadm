@@ -14,13 +14,13 @@
 variable "ami_id" {
   description = "AMI ID for the EC2 instance"
   type        = string
-  default     = "ami-0c55b159cbfafe1f0" # Amazon Linux 2
+  # default     = "ami-020cba7c55df1f615" # Amazon Linux 2
 }
 
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-  # default     = "t2.micro"
+  default     = "t2.micro"
 }
 
 # variable "aws_role_arn" {
