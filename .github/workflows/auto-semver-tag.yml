@@ -3,12 +3,12 @@ name: Auto Semantic Version Tag
 on:
   # push:
   #   branches:
-  #     - feature/checkov-scan
+  #     - main
   pull_request:
     types:
       - closed
     branches:
-      - feature/checkov-scan
+      - main
 
 jobs:
   auto-bump-version:
@@ -50,7 +50,7 @@ jobs:
           echo "${{ env.NEW_VERSION }}" > .version
           git add .version
           git commit -m "chore: bump version to ${{ env.NEW_VERSION }}"
-          git push origin HEAD:feature/checkov-scan
+          git push origin HEAD:main
 
       - name: Create Annotated Git Tag
         run: |
