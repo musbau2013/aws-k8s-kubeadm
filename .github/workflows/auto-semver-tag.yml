@@ -132,6 +132,28 @@ on:
       - main
       - master
 
+  workflow_dispatch:
+    inputs:
+      folder:
+        description: "Select the folder to deploy"
+        required: true
+        type: choice
+        options:
+          - "./ec2-folder"
+          # Add more folders as needed
+
+      workspace:
+        description: "Select the Terraform Cloud workspace"
+        required: true
+        type: choice
+        options:
+          - apthub-devops
+          - amazon-lex-v2
+          - aws-k8s-kubeadm
+          - vpc-staging
+          - aws-api-test1
+          
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
