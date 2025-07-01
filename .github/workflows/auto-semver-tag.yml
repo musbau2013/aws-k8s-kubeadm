@@ -1,9 +1,9 @@
 name: Auto Semantic Version Tag
 
 on:
-  push:
-    branches:
-      - feature/checkov-scan
+  # push:
+  #   branches:
+  #     - feature/checkov-scan
   pull_request:
     types:
       - closed
