@@ -1,4 +1,129 @@
-name: Semantic Version Tagging on PR Merge hfhfjdfdGGGGGGGGGGG
+# name: Semantic Version Tagging on PR Merge hfhfjdfdGGGGGGGGGGG
+
+# on:
+#   pull_request:
+#     types: [closed]
+#     branches:
+#       - main
+#       - master
+
+# jobs:
+#   tag-version:
+#     if: github.event.pull_request.merged == true
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: write
+#       pull-requests: read
+#     steps:
+#     - uses: actions/checkout@v4
+#       with:
+#         fetch-depth: 0  # Required for full git history
+#         ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+#     - name: Get current version
+#       id: current-version
+#       run: |
+#         # Fetch all tags
+#         git fetch --tags
+        
+#         # Get the latest tag that matches vX.Y.Z pattern
+#         CURRENT_TAG=$(git describe --tags --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || echo "v0.0.0")
+#         echo "Current tag: $CURRENT_TAG"
+        
+#         # Extract version components
+#         VERSION=${CURRENT_TAG#v}
+#         MAJOR=$(echo $VERSION | cut -d. -f1)
+#         MINOR=$(echo $VERSION | cut -d. -f2)
+#         PATCH=$(echo $VERSION | cut -d. -f3)
+        
+#         echo "major=$MAJOR" >> $GITHUB_OUTPUT
+#         echo "minor=$MINOR" >> $GITHUB_OUTPUT
+#         echo "patch=$PATCH" >> $GITHUB_OUTPUT
+#         echo "current_version=$VERSION" >> $GITHUB_OUTPUT
+
+#     - name: Analyze PR commits for version bump
+#       id: bump-version
+#       run: |
+#         # Default to patch level bump
+#         BUMP_LEVEL="patch"
+        
+#         # Get the range of commits in this PR
+#         FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
+#         LAST_COMMIT=${{ github.event.pull_request.merge_commit_sha }}
+        
+#         # Check for feature commits (minor bump)
+#         if git log --pretty=format:"%s" $FIRST_COMMIT..$LAST_COMMIT | grep -qE '^(feat|feature)\(?.*\)?:'; then
+#           BUMP_LEVEL="minor"
+#           echo "Found feature commits - bumping minor version"
+#         fi
+        
+#         # Check for breaking changes (major bump)
+#         if git log --pretty=format:"%b" $FIRST_COMMIT..$LAST_COMMIT | grep -q 'BREAKING CHANGE'; then
+#           BUMP_LEVEL="major"
+#           echo "Found breaking changes - bumping major version"
+#         fi
+        
+#         # Also check PR title for version bump indicators
+#         PR_TITLE="${{ github.event.pull_request.title }}"
+#         if [[ $PR_TITLE =~ (breaking change|major) ]]; then
+#           BUMP_LEVEL="major"
+#           echo "PR title indicates major version bump"
+#         elif [[ $PR_TITLE =~ (feat|feature) ]]; then
+#           if [ "$BUMP_LEVEL" != "major" ]; then
+#             BUMP_LEVEL="minor"
+#             echo "PR title indicates minor version bump"
+#           fi
+#         fi
+        
+#         echo "bump_level=$BUMP_LEVEL" >> $GITHUB_OUTPUT
+
+#     - name: Calculate new version
+#       id: new-version
+#       run: |
+#         case "${{ steps.bump-version.outputs.bump_level }}" in
+#           major)
+#             NEW_MAJOR=$(( ${{ steps.current-version.outputs.major }} + 1 ))
+#             NEW_VERSION="v${NEW_MAJOR}.0.0"
+#             ;;
+#           minor)
+#             NEW_MINOR=$(( ${{ steps.current-version.outputs.minor }} + 1 ))
+#             NEW_VERSION="v${{ steps.current-version.outputs.major }}.${NEW_MINOR}.0"
+#             ;;
+#           *)
+#             NEW_PATCH=$(( ${{ steps.current-version.outputs.patch }} + 1 ))
+#             NEW_VERSION="v${{ steps.current-version.outputs.major }}.${{ steps.current-version.outputs.minor }}.${NEW_PATCH}"
+#             ;;
+#         esac
+        
+#         echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+#         echo "New version will be: ${NEW_VERSION}"
+
+#     - name: Create and push new tag
+#       if: ${{ steps.new-version.outputs.new_version != '' }}
+#       run: |
+#         git config --global user.name "GitHub Actions"
+#         git config --global user.email "actions@github.com"
+#         git tag -a "${{ steps.new-version.outputs.new_version }}" -m "Release ${{ steps.new-version.outputs.new_version }}"
+#         git push origin "${{ steps.new-version.outputs.new_version }}"
+#         echo "Created tag ${{ steps.new-version.outputs.new_version }}"
+
+#     - name: Create GitHub Release
+#       if: ${{ steps.new-version.outputs.new_version != '' }}
+#       uses: actions/create-release@v1
+#       env:
+#         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#       with:
+#         tag_name: ${{ steps.new-version.outputs.new_version }}
+#         release_name: Release ${{ steps.new-version.outputs.new_version }}
+#         body: |
+#           This release was automatically created when PR #${{ github.event.pull_request.number }} was merged.
+          
+#           **Changes:**
+#           ${{ github.event.pull_request.body }}
+#         draft: false
+#         prerelease: false
+
+name: PR Merge Pipeline (Scan → Tag → TFC Trigger)
 
 on:
   pull_request:
@@ -7,35 +132,71 @@ on:
       - main
       - master
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  tag-version:
+  infra-scan:
     if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      tflint_passed: ${{ steps.set-output.outputs.tflint_passed }}
+      merge_commit_sha: ${{ github.event.pull_request.merge_commit_sha }}
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install Terraform
+      uses: hashicorp/setup-terraform@v2
+
+    - name: Install TFLint
+      run: |
+        TFLINT_VERSION=$(curl -s https://api.github.com/repos/terraform-linters/tflint/releases/latest | jq -r .tag_name)
+        curl -sL https://github.com/terraform-linters/tflint/releases/download/${TFLINT_VERSION}/tflint_linux_amd64.zip > tflint.zip
+        unzip tflint.zip
+        chmod +x tflint
+        sudo mv tflint /usr/local/bin/
+
+    - name: Run TFLint
+      id: tflint
+      run: |
+        cd ${{ inputs.folder || '.' }}
+        tflint --init || true
+        tflint
+
+    - name: Set output based on TFLint result
+      id: set-output
+      run: |
+        echo "tflint_passed=true" >> $GITHUB_OUTPUT
+
+  tag-version:
+    needs: infra-scan
+    if: github.event.pull_request.merged == true && needs.infra-scan.outputs.tflint_passed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: read
+
     steps:
     - uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Required for full git history
-        ref: ${{ github.event.pull_request.merge_commit_sha }}
+        fetch-depth: 0
+        ref: ${{ needs.infra-scan.outputs.merge_commit_sha }}
 
     - name: Get current version
       id: current-version
       run: |
-        # Fetch all tags
         git fetch --tags
-        
-        # Get the latest tag that matches vX.Y.Z pattern
         CURRENT_TAG=$(git describe --tags --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || echo "v0.0.0")
         echo "Current tag: $CURRENT_TAG"
-        
-        # Extract version components
         VERSION=${CURRENT_TAG#v}
         MAJOR=$(echo $VERSION | cut -d. -f1)
         MINOR=$(echo $VERSION | cut -d. -f2)
         PATCH=$(echo $VERSION | cut -d. -f3)
-        
         echo "major=$MAJOR" >> $GITHUB_OUTPUT
         echo "minor=$MINOR" >> $GITHUB_OUTPUT
         echo "patch=$PATCH" >> $GITHUB_OUTPUT
@@ -44,35 +205,23 @@ jobs:
     - name: Analyze PR commits for version bump
       id: bump-version
       run: |
-        # Default to patch level bump
         BUMP_LEVEL="patch"
-        
-        # Get the range of commits in this PR
         FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
-        LAST_COMMIT=${{ github.event.pull_request.merge_commit_sha }}
+        LAST_COMMIT=${{ needs.infra-scan.outputs.merge_commit_sha }}
         
-        # Check for feature commits (minor bump)
         if git log --pretty=format:"%s" $FIRST_COMMIT..$LAST_COMMIT | grep -qE '^(feat|feature)\(?.*\)?:'; then
           BUMP_LEVEL="minor"
-          echo "Found feature commits - bumping minor version"
         fi
         
-        # Check for breaking changes (major bump)
         if git log --pretty=format:"%b" $FIRST_COMMIT..$LAST_COMMIT | grep -q 'BREAKING CHANGE'; then
           BUMP_LEVEL="major"
-          echo "Found breaking changes - bumping major version"
         fi
         
-        # Also check PR title for version bump indicators
         PR_TITLE="${{ github.event.pull_request.title }}"
         if [[ $PR_TITLE =~ (breaking change|major) ]]; then
           BUMP_LEVEL="major"
-          echo "PR title indicates major version bump"
         elif [[ $PR_TITLE =~ (feat|feature) ]]; then
-          if [ "$BUMP_LEVEL" != "major" ]; then
-            BUMP_LEVEL="minor"
-            echo "PR title indicates minor version bump"
-          fi
+          [ "$BUMP_LEVEL" != "major" ] && BUMP_LEVEL="minor"
         fi
         
         echo "bump_level=$BUMP_LEVEL" >> $GITHUB_OUTPUT
@@ -81,44 +230,86 @@ jobs:
       id: new-version
       run: |
         case "${{ steps.bump-version.outputs.bump_level }}" in
-          major)
-            NEW_MAJOR=$(( ${{ steps.current-version.outputs.major }} + 1 ))
-            NEW_VERSION="v${NEW_MAJOR}.0.0"
-            ;;
-          minor)
-            NEW_MINOR=$(( ${{ steps.current-version.outputs.minor }} + 1 ))
-            NEW_VERSION="v${{ steps.current-version.outputs.major }}.${NEW_MINOR}.0"
-            ;;
-          *)
-            NEW_PATCH=$(( ${{ steps.current-version.outputs.patch }} + 1 ))
-            NEW_VERSION="v${{ steps.current-version.outputs.major }}.${{ steps.current-version.outputs.minor }}.${NEW_PATCH}"
-            ;;
+          major) NEW_VERSION="v$(( ${{ steps.current-version.outputs.major }} + 1 )).0.0";;
+          minor) NEW_VERSION="v${{ steps.current-version.outputs.major }}.$(( ${{ steps.current-version.outputs.minor }} + 1 )).0";;
+          *) NEW_VERSION="v${{ steps.current-version.outputs.major }}.${{ steps.current-version.outputs.minor }}.$(( ${{ steps.current-version.outputs.patch }} + 1 ))";;
         esac
-        
         echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
-        echo "New version will be: ${NEW_VERSION}"
 
     - name: Create and push new tag
-      if: ${{ steps.new-version.outputs.new_version != '' }}
       run: |
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
         git tag -a "${{ steps.new-version.outputs.new_version }}" -m "Release ${{ steps.new-version.outputs.new_version }}"
         git push origin "${{ steps.new-version.outputs.new_version }}"
-        echo "Created tag ${{ steps.new-version.outputs.new_version }}"
+        echo "::notice::Successfully created and pushed new version tag: ${{ steps.new-version.outputs.new_version }}"
 
-    - name: Create GitHub Release
-      if: ${{ steps.new-version.outputs.new_version != '' }}
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.new-version.outputs.new_version }}
-        release_name: Release ${{ steps.new-version.outputs.new_version }}
-        body: |
-          This release was automatically created when PR #${{ github.event.pull_request.number }} was merged.
-          
-          **Changes:**
-          ${{ github.event.pull_request.body }}
-        draft: false
-        prerelease: false
+  trigger-tfc:
+    needs: [infra-scan, tag-version]
+    if: github.event.pull_request.merged == true && needs.infra-scan.outputs.tflint_passed == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+      NEW_VERSION: ${{ needs.tag-version.outputs.new_version }}
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Read Workspace ID from JSON Mapping
+      id: get_workspace_id
+      run: |
+        WORKSPACE_NAME="${{ inputs.workspace }}"
+        JSON_PATH=".github/tfc-workspaces.json"
+        
+        if [[ ! -f "$JSON_PATH" ]]; then
+          echo "::error::Workspace mapping file not found at $JSON_PATH"
+          exit 1
+        fi
+
+        WORKSPACE_ID=$(jq -r --arg name "$WORKSPACE_NAME" '.[$name]' "$JSON_PATH")
+
+        if [[ "$WORKSPACE_ID" == "null" ]]; then
+          echo "::error::Workspace '$WORKSPACE_NAME' not found in mapping"
+          exit 1
+        fi
+
+        echo "WORKSPACE_ID=$WORKSPACE_ID" >> $GITHUB_ENV
+
+    - name: Trigger Terraform Cloud Run
+      run: |
+        MESSAGE="Automated deployment for version $NEW_VERSION (PR #${{ github.event.pull_request.number }})"
+        
+        echo "::notice::Triggering Terraform Cloud run for version $NEW_VERSION in workspace $WORKSPACE_ID"
+        
+        curl -s \
+          --header "Authorization: Bearer ${TF_API_TOKEN}" \
+          --header "Content-Type: application/vnd.api+json" \
+          --data '{
+            "data": {
+              "type": "runs",
+              "attributes": {
+                "is-destroy": false,
+                "message": "'"${MESSAGE}"'"
+              },
+              "relationships": {
+                "workspace": {
+                  "data": {
+                    "type": "workspaces",
+                    "id": "'"${WORKSPACE_ID}"'"
+                  }
+                }
+              }
+            }
+          }' \
+          "https://app.terraform.io/api/v2/runs"
+
+    - name: Print final version information
+      run: |
+        echo "=============================================="
+        echo "🚀 Deployment Pipeline Successfully Completed"
+        echo "📌 Version Tag: $NEW_VERSION"
+        echo "🔗 Terraform Cloud Run Triggered for version $NEW_VERSION"
+        echo "📝 PR Reference: #${{ github.event.pull_request.number }}"
+        echo "=============================================="
+        echo "::notice::Workflow completed for version $NEW_VERSION"
