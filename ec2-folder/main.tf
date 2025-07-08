@@ -6,6 +6,6 @@ resource "aws_instance" "my_ec2" {
   # key_name      = var.key_name
 
   tags = {
-    Name = "tf-ec2-instance"
+    Name = "tf-ec2-instance-lambda"
   }
 }
