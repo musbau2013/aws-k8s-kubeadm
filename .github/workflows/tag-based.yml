@@ -1,0 +1,144 @@
+name: trigger tf based on tags
+run-name: Triggering ${{ inputs.workspace }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      folder:
+        description: "Select the folder to deploy"
+        required: true
+        type: choice
+        options:
+          - "./ec2-folder"
+          # Add more folders as needed
+
+      workspace:
+        description: "Select the Terraform Cloud workspace"
+        required: true
+        type: choice
+        options:
+          - apthub-devops
+          - amazon-lex-v2
+          - aws-k8s-kubeadm
+          - vpc-staging
+          - aws-api-test1
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  trigger-tfc-run:
+    name: Trigger Terraform Cloud Run
+    runs-on: ubuntu-latest
+    if: success()
+
+    env:
+      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+      TAG_NAME: ${{ github.ref_name }}
+
+    steps:
+      # - name: Add Sherwin CA certificates
+      #   uses: sherwin-williams-co/sherwin-ca-injector-action@v0
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Read Workspace ID from JSON Mapping
+        id: get_workspace_id
+        run: |
+          WORKSPACE_NAME="${{ inputs.workspace }}"
+          JSON_PATH=".github/tfc-workspaces.json"
+
+          if [[ ! -f "$JSON_PATH" ]]; then
+            echo "Error: Workspace mapping file not found at $JSON_PATH"
+            exit 1
+          fi
+
+          WORKSPACE_ID=$(jq -r --arg name "$WORKSPACE_NAME" '.[$name]' "$JSON_PATH")
+
+          if [[ "$WORKSPACE_ID" == "null" ]]; then
+            echo "Error: workspace '$WORKSPACE_NAME' not found in mapping"
+            exit 1
+          fi
+
+          echo "WORKSPACE_ID=$WORKSPACE_ID" >> $GITHUB_ENV
+
+      - name: Create or Update Terraform Variable for Tag
+        run: |
+          echo "Setting Terraform Cloud variable 'deploy_tag' to '${TAG_NAME}'"
+
+          # Find if variable already exists for workspace
+          VAR_ID=$(curl -s \
+            --header "Authorization: Bearer ${TF_API_TOKEN}" \
+            "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/vars" | \
+            jq -r '.data[] | select(.attributes.key=="deploy_tag") | .id')
+
+          if [ -z "$VAR_ID" ]; then
+            echo "Variable does not exist, creating it."
+            curl -s -X POST \
+              --header "Authorization: Bearer ${TF_API_TOKEN}" \
+              --header "Content-Type: application/vnd.api+json" \
+              --data '{
+                "data": {
+                  "type":"vars",
+                  "attributes": {
+                    "key":"deploy_tag",
+                    "value":"'"${TAG_NAME}"'",
+                    "category":"terraform",
+                    "hcl":false,
+                    "sensitive":false
+                  },
+                  "relationships": {
+                    "workspace": {
+                      "data": {
+                        "id":"'"${WORKSPACE_ID}"'",
+                        "type":"workspaces"
+                      }
+                    }
+                  }
+                }
+              }' \
+              "https://app.terraform.io/api/v2/vars"
+          else
+            echo "Variable exists (ID: $VAR_ID), updating it."
+            curl -s -X PATCH \
+              --header "Authorization: Bearer ${TF_API_TOKEN}" \
+              --header "Content-Type: application/vnd.api+json" \
+              --data '{
+                "data": {
+                  "id":"'"${VAR_ID}"'",
+                  "type":"vars",
+                  "attributes": {
+                    "value":"'"${TAG_NAME}"'"
+                  }
+                }
+              }' \
+              "https://app.terraform.io/api/v2/vars/${VAR_ID}"
+          fi
+
+      - name: Trigger Terraform Cloud Run
+        run: |
+          MESSAGE="Triggered by GitHub Actions for tag ${TAG_NAME}"
+
+          curl -sk \
+            --header "Authorization: Bearer ${TF_API_TOKEN}" \
+            --header "Content-Type: application/vnd.api+json" \
+            --data '{
+              "data": {
+                "type": "runs",
+                "attributes": {
+                  "is-destroy": false,
+                  "message": "'"${MESSAGE}"'"
+                },
+                "relationships": {
+                  "workspace": {
+                    "data": {
+                      "type": "workspaces",
+                      "id": "'"${WORKSPACE_ID}"'"
+                    }
+                  }
+                }
+              }
+            }' \
+            "https://app.terraform.io/api/v2/runs"
