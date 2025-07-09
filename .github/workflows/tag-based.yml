@@ -67,7 +67,7 @@ jobs:
       - name: Create Terraform Cloud configuration version
         id: config_version
         run: |
-          RESPONSE=$(curl -s \
+          RESPONSE=$(curl -sk \
             --header "Authorization: Bearer ${TF_API_TOKEN}" \
             --header "Content-Type: application/vnd.api+json" \
             --request POST \
@@ -102,7 +102,7 @@ jobs:
 
       - name: Update configuration version to use tag ${{ inputs.tag }}
         run: |
-          PATCH_RESPONSE=$(curl -s \
+          PATCH_RESPONSE=$(curl -sk \
             --header "Authorization: Bearer ${TF_API_TOKEN}" \
             --header "Content-Type: application/vnd.api+json" \
             --request PATCH \
@@ -121,7 +121,7 @@ jobs:
 
       - name: Trigger Terraform Cloud run on ${{ inputs.workspace }}
         run: |
-          curl -s \
+          curl -sk \
             --header "Authorization: Bearer ${TF_API_TOKEN}" \
             --header "Content-Type: application/vnd.api+json" \
             --data '{
