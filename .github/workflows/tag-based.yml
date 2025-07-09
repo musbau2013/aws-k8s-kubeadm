@@ -44,15 +44,19 @@ jobs:
         run: |
           WORKSPACE_NAME="${{ inputs.workspace }}"
           JSON_PATH=".github/tfc-workspaces.json"
+
           if [[ ! -f "$JSON_PATH" ]]; then
             echo "Error: Mapping file not found at $JSON_PATH"
             exit 1
           fi
+
           WORKSPACE_ID=$(jq -r --arg name "$WORKSPACE_NAME" '.[$name]' "$JSON_PATH")
           if [[ "$WORKSPACE_ID" == "null" ]]; then
             echo "Workspace '$WORKSPACE_NAME' not found"
             exit 1
           fi
+
+          echo "Workspace ID: $WORKSPACE_ID"
           echo "WORKSPACE_ID=$WORKSPACE_ID" >> $GITHUB_ENV
 
       - name: Create configuration version with tag
@@ -79,26 +83,48 @@ jobs:
               }
             }' \
             https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/configuration-versions)
-          
-          CONFIG_VERSION_ID=$(echo "$RESPONSE" | jq -r '.data.id')
-          echo "CONFIG_VERSION_ID=$CONFIG_VERSION_ID" >> $GITHUB_ENV
 
-      - name: Wait for configuration version to process
+          CONFIG_VERSION_ID=$(echo "$RESPONSE" | jq -r '.data.id')
+          if [[ -z "$CONFIG_VERSION_ID" || "$CONFIG_VERSION_ID" == "null" ]]; then
+            echo "Failed to create configuration version"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+          echo "CONFIG_VERSION_ID=$CONFIG_VERSION_ID" >> $GITHUB_ENV
+          echo "Created configuration version: $CONFIG_VERSION_ID"
+
+      - name: Wait for configuration version to be processed
         run: |
-          for i in {1..50}; do
+          echo "Waiting for configuration version to be ready..."
+          MAX_WAIT=300
+          WAITED=0
+          INTERVAL=5
+
+          while [[ $WAITED -lt $MAX_WAIT ]]; do
             STATUS=$(curl -s \
               --header "Authorization: Bearer ${TF_API_TOKEN}" \
               https://app.terraform.io/api/v2/configuration-versions/${CONFIG_VERSION_ID} \
               | jq -r '.data.attributes.status')
-            echo "Attempt $i: status = $STATUS"
+
+            echo "Waited ${WAITED}s: status = $STATUS"
+
             if [[ "$STATUS" == "uploaded" ]]; then
+              echo "Configuration version is ready!"
               break
             elif [[ "$STATUS" == "errored" ]]; then
-              echo "Configuration version failed processing"
+              echo "Configuration version failed processing!"
               exit 1
             fi
-            sleep 5
+
+            sleep $INTERVAL
+            WAITED=$((WAITED + INTERVAL))
           done
+
+          if [[ "$STATUS" != "uploaded" ]]; then
+            echo "Timed out after ${MAX_WAIT}s waiting for configuration to be ready."
+            exit 1
+          fi
 
       - name: Trigger Terraform Cloud run
         run: |
@@ -129,3 +155,5 @@ jobs:
               }
             }' \
             "https://app.terraform.io/api/v2/runs"
+
+          echo "Triggered Terraform run on workspace ${{ inputs.workspace }} with tag ${{ inputs.tag }}"
