@@ -34,10 +34,29 @@ jobs:
 
     env:
       TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
+      - name: Check if tag exists in GitHub
+        run: |
+          REPO="${{ github.repository }}"
+          TAG="${{ inputs.tag }}"
+
+          echo "Checking if tag '$TAG' exists in repo '$REPO'..."
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/${REPO}/git/ref/tags/${TAG}")
+
+          if [[ "$STATUS" != "200" ]]; then
+            echo "❌ Tag '$TAG' does not exist in the repository. Aborting."
+            exit 1
+          else
+            echo "✅ Tag '$TAG' exists. Continuing."
+          fi
 
       - name: Lookup Terraform Cloud workspace ID
         id: lookup
@@ -156,4 +175,4 @@ jobs:
             }' \
             "https://app.terraform.io/api/v2/runs"
 
-          echo "Triggered Terraform run on workspace ${{ inputs.workspace }} with tag ${{ inputs.tag }}"
+          echo "✅ Triggered Terraform run on workspace ${{ inputs.workspace }} with tag ${{ inputs.tag }}"
