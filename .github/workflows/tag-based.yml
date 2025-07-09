@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       folder:
-        description: "Select the Terraform folder"
+        description: "Terraform folder"
         required: true
         type: choice
         options:
@@ -36,7 +36,7 @@ jobs:
       TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Lookup Terraform Cloud workspace ID
@@ -44,24 +44,18 @@ jobs:
         run: |
           WORKSPACE_NAME="${{ inputs.workspace }}"
           JSON_PATH=".github/tfc-workspaces.json"
-
           if [[ ! -f "$JSON_PATH" ]]; then
             echo "Error: Mapping file not found at $JSON_PATH"
             exit 1
           fi
-
           WORKSPACE_ID=$(jq -r --arg name "$WORKSPACE_NAME" '.[$name]' "$JSON_PATH")
-
           if [[ "$WORKSPACE_ID" == "null" ]]; then
-            echo "Error: Workspace '$WORKSPACE_NAME' not found in mapping"
+            echo "Workspace '$WORKSPACE_NAME' not found"
             exit 1
           fi
-
-          echo "Workspace ID: $WORKSPACE_ID"
           echo "WORKSPACE_ID=$WORKSPACE_ID" >> $GITHUB_ENV
 
-      - name: Create Terraform Cloud configuration version
-        id: config_version
+      - name: Create configuration version with tag
         run: |
           RESPONSE=$(curl -s \
             --header "Authorization: Bearer ${TF_API_TOKEN}" \
@@ -71,7 +65,8 @@ jobs:
               "data": {
                 "type":"configuration-versions",
                 "attributes": {
-                  "auto-queue-runs": false
+                  "auto-queue-runs": false,
+                  "vcs-revision":"'"${{ inputs.tag }}"'"
                 },
                 "relationships": {
                   "workspace": {
@@ -84,62 +79,28 @@ jobs:
               }
             }' \
             https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/configuration-versions)
-
+          
           CONFIG_VERSION_ID=$(echo "$RESPONSE" | jq -r '.data.id')
-
-          if [[ -z "$CONFIG_VERSION_ID" || "$CONFIG_VERSION_ID" == "null" ]]; then
-            echo "Failed to create configuration version"
-            echo "$RESPONSE"
-            exit 1
-          fi
-
-          echo "Created configuration version: $CONFIG_VERSION_ID"
           echo "CONFIG_VERSION_ID=$CONFIG_VERSION_ID" >> $GITHUB_ENV
 
-      - name: Wait for configuration version to become ready
+      - name: Wait for configuration version to process
         run: |
-          echo "Waiting for configuration version to be processed by Terraform Cloud..."
-
           for i in {1..10}; do
             STATUS=$(curl -s \
               --header "Authorization: Bearer ${TF_API_TOKEN}" \
-              --header "Content-Type: application/vnd.api+json" \
               https://app.terraform.io/api/v2/configuration-versions/${CONFIG_VERSION_ID} \
               | jq -r '.data.attributes.status')
-
             echo "Attempt $i: status = $STATUS"
-
             if [[ "$STATUS" == "uploaded" ]]; then
-              echo "Configuration version is ready!"
               break
             elif [[ "$STATUS" == "errored" ]]; then
-              echo "Configuration version failed processing!"
+              echo "Configuration version failed processing"
               exit 1
             fi
-
             sleep 5
           done
 
-      - name: Update configuration version to use tag ${{ inputs.tag }}
-        run: |
-          PATCH_RESPONSE=$(curl -s \
-            --header "Authorization: Bearer ${TF_API_TOKEN}" \
-            --header "Content-Type: application/vnd.api+json" \
-            --request PATCH \
-            --data '{
-              "data": {
-                "type":"configuration-versions",
-                "id":"'"${CONFIG_VERSION_ID}"'",
-                "attributes": {
-                  "vcs-revision":"'"${{ inputs.tag }}"'"
-                }
-              }
-            }' \
-            "https://app.terraform.io/api/v2/configuration-versions/${CONFIG_VERSION_ID}")
-
-          echo "Updated configuration to use tag: ${{ inputs.tag }}"
-
-      - name: Trigger Terraform Cloud run on ${{ inputs.workspace }}
+      - name: Trigger Terraform Cloud run
         run: |
           curl -s \
             --header "Authorization: Bearer ${TF_API_TOKEN}" \
@@ -149,7 +110,7 @@ jobs:
                 "type": "runs",
                 "attributes": {
                   "is-destroy": false,
-                  "message": "Deploying tag '"${{ inputs.tag }}"' from GitHub Actions"
+                  "message": "Deploying tag '"${{ inputs.tag }}"' via GitHub Actions"
                 },
                 "relationships": {
                   "workspace": {
@@ -168,5 +129,3 @@ jobs:
               }
             }' \
             "https://app.terraform.io/api/v2/runs"
-
-          echo "Run triggered in Terraform Cloud for workspace ${{ inputs.workspace }}"
