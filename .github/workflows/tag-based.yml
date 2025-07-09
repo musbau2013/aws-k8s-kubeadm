@@ -40,8 +40,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Add Sherwin CA certificates (optional)
-        uses: sherwin-williams-co/sherwin-ca-injector-action@v0
+      # - name: Add Sherwin CA certificates (optional)
+      #   uses: sherwin-williams-co/sherwin-ca-injector-action@v0
 
       - name: Lookup Terraform Cloud workspace ID
         id: lookup
